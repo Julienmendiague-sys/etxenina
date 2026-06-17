@@ -1516,7 +1516,7 @@ let selectedYear = null;
 
 async function loadData() {
   try {
-    commandes = await sbFetch('commandes?order=id.desc') || [];
+    commandes = await sbFetch('commandes?order=date.desc,id.desc') || [];
     abonnements = await sbFetch('abonnements?order=id.desc') || [];
   } catch(e) {
     // fallback localStorage
@@ -2129,6 +2129,7 @@ async function saveCommande() {
   try {
     await sbFetch('commandes', { method: 'POST', prefer: 'return=minimal', body: JSON.stringify(cmd) });
     commandes.unshift(cmd);
+  commandes.sort((a,b) => (b.date||'').localeCompare(a.date||''));
   } catch(e) { showToast('❌ ' + e.message.substring(0, 60)); return; }
   showToast('✅ Commande enregistrée !');
   resetForm();
@@ -2296,6 +2297,7 @@ async function saveModal() {
       })
     });
   } catch(e) { showToast('❌ ' + e.message.substring(0,60)); return; }
+  commandes.sort((a,b) => (b.date||'').localeCompare(a.date||''));
   renderListe();
   closeModalDirect();
   showToast('✅ Mis à jour !');
@@ -2474,4 +2476,4 @@ window.addEventListener('load', () => {
 });
 </script>
 </body>
-</html> 
+</html>
