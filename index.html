@@ -1410,18 +1410,33 @@
   <div class="modal">
     <div class="modal-handle"></div>
     <div class="modal-title" id="modal-title"></div>
-    <div class="modal-subtitle" id="modal-subtitle"></div>
 
     <div class="modal-section">Informations générales</div>
     <div class="row-2">
       <div class="field">
+        <label>Date</label>
+        <input type="date" id="modal-date">
+      </div>
+      <div class="field">
         <label>N° Facture</label>
         <input type="text" id="modal-facture" placeholder="861">
+      </div>
+    </div>
+    <div class="row-2">
+      <div class="field">
+        <label>Prénom</label>
+        <input type="text" id="modal-prenom" placeholder="Marie">
       </div>
       <div class="field">
         <label>Montant (€)</label>
         <input type="number" id="modal-prix" placeholder="0.00" step="0.01">
       </div>
+    </div>
+
+    <div class="modal-section">Produits</div>
+    <div class="produits-block">
+      <div id="modal-produits-list"></div>
+      <button class="btn-add-produit" onclick="addModalProduit()">＋ Ajouter un produit</button>
     </div>
 
     <div class="modal-section">Suivi logistique</div>
@@ -2200,19 +2215,51 @@ function badge(on, label) {
 
 function toggleStatut(el) { el.classList.toggle('on'); }
 
+let modalProduitCount = 0;
+
+function addModalProduit(nom='', qty='') {
+  modalProduitCount++;
+  const id = 'mp' + modalProduitCount;
+  const div = document.createElement('div');
+  div.className = 'produit-row';
+  div.id = id;
+  div.innerHTML = `
+    <input type="text" placeholder="Ex: Côtes de bœuf" class="produit-nom" value="${nom}">
+    <input type="text" placeholder="Qté" class="produit-qty" value="${qty}">
+    <button class="btn-remove" onclick="document.getElementById('${id}').remove()">✕</button>
+  `;
+  document.getElementById('modal-produits-list').appendChild(div);
+}
+
+function getModalProduits() {
+  const rows = document.querySelectorAll('#modal-produits-list .produit-row');
+  const list = [];
+  rows.forEach(r => {
+    const nom = r.querySelector('.produit-nom').value.trim();
+    const qty = r.querySelector('.produit-qty').value.trim();
+    if (nom) list.push({nom, qty});
+  });
+  return list;
+}
+
 function openModal(id) {
   modalId = id;
+  modalProduitCount = 0;
   const c = commandes.find(x => x.id===id);
   if (!c) return;
   const s = c.statuts || {};
-  const dateStr = c.date ? new Date(c.date).toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'}) : '—';
-  const produitsStr = (c.produits||[]).map(p=>`🥩 ${p.nom}${p.qty?' — '+p.qty:''}`).join('<br>');
 
   document.getElementById('modal-title').textContent = c.prenom;
-  document.getElementById('modal-subtitle').innerHTML = `📅 ${dateStr}<br>${produitsStr}`;
+  document.getElementById('modal-date').value = c.date || '';
+  document.getElementById('modal-prenom').value = c.prenom || '';
   document.getElementById('modal-facture').value = c.facture || '';
   document.getElementById('modal-prix').value = c.prix || '';
   document.getElementById('modal-paiement').value = c.paiement || '';
+
+  // Load products
+  document.getElementById('modal-produits-list').innerHTML = '';
+  (c.produits || []).forEach(p => addModalProduit(p.nom, p.qty));
+  if (!c.produits || c.produits.length === 0) addModalProduit();
 
   document.querySelectorAll('#modal .statut-toggle').forEach(t => {
     t.classList.toggle('on', !!(s[t.dataset.key]));
@@ -2229,15 +2276,26 @@ async function saveModal() {
     newStatuts[t.dataset.key] = t.classList.contains('on');
   });
   commandes[idx].statuts = newStatuts;
+  commandes[idx].date = document.getElementById('modal-date').value;
+  commandes[idx].prenom = document.getElementById('modal-prenom').value.trim();
   commandes[idx].facture = document.getElementById('modal-facture').value.trim();
   commandes[idx].prix = parseFloat(document.getElementById('modal-prix').value)||0;
   commandes[idx].paiement = document.getElementById('modal-paiement').value;
+  commandes[idx].produits = getModalProduits();
   try {
     await sbFetch('commandes?id=eq.' + modalId, {
       method: 'PATCH', prefer: 'return=minimal',
-      body: JSON.stringify({ statuts: commandes[idx].statuts, facture: commandes[idx].facture, prix: commandes[idx].prix, paiement: commandes[idx].paiement })
+      body: JSON.stringify({
+        statuts: commandes[idx].statuts,
+        date: commandes[idx].date,
+        prenom: commandes[idx].prenom,
+        facture: commandes[idx].facture,
+        prix: commandes[idx].prix,
+        paiement: commandes[idx].paiement,
+        produits: commandes[idx].produits
+      })
     });
-  } catch(e) { showToast('❌ Erreur sauvegarde'); return; }
+  } catch(e) { showToast('❌ ' + e.message.substring(0,60)); return; }
   renderListe();
   closeModalDirect();
   showToast('✅ Mis à jour !');
