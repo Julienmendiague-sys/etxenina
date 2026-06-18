@@ -176,11 +176,19 @@
     background: var(--blanc);
     border: 1.5px solid var(--beige);
     border-radius: 16px;
-    padding: 16px;
+    padding: 16px 12px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 14px;
+    gap: 12px;
+    box-shadow: 0 2px 12px rgba(61,43,31,0.06);
+  }
+
+  .donnees-pie-wrap canvas {
+    max-width: 220px !important;
+    border: none;
+    padding: 0;
+    background: none;
   }
 
   .pie-legend {
@@ -193,9 +201,12 @@
   .pie-legend-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 0.75rem;
+    gap: 7px;
+    font-size: 0.72rem;
     color: var(--brun);
+    background: var(--creme);
+    border-radius: 8px;
+    padding: 6px 8px;
   }
 
   .pie-legend-dot {
@@ -205,8 +216,8 @@
     flex-shrink: 0;
   }
 
-  .pie-legend-label { font-weight: 600; }
-  .pie-legend-pct { color: var(--gris); margin-left: auto; font-weight: 700; }
+  .pie-legend-label { font-weight: 600; flex: 1; }
+  .pie-legend-pct { color: var(--gris); font-weight: 700; font-size: 0.68rem; }
 
   /* DONNÉES */
   .donnees-tabs {
@@ -1390,7 +1401,7 @@
       <canvas id="chart-mensuel" height="240"></canvas>
       <div class="donnees-chart-title">🥧 Répartition des commandes</div>
       <div class="donnees-pie-wrap">
-        <canvas id="chart-pie" height="260"></canvas>
+        <canvas id="chart-pie" height="200"></canvas>
       </div>
     </div>
 
@@ -1816,34 +1827,72 @@ function renderDonnees(type) {
     );
     const pieTotal = counts.reduce((s,v) => s+v, 0);
 
+    // Custom plugin to draw labels on slices
+    const pieLabelsPlugin = {
+      id: 'pieLabels',
+      afterDraw(chart) {
+        const ctx2 = chart.ctx;
+        const meta = chart.getDatasetMeta(0);
+        meta.data.forEach((arc, i) => {
+          const val = counts[i];
+          if (val === 0) return;
+          const pct = pieTotal > 0 ? ((val/pieTotal)*100).toFixed(0) : 0;
+          const angle = (arc.startAngle + arc.endAngle) / 2;
+          const r = (arc.innerRadius + arc.outerRadius) / 2;
+          const x = arc.x + Math.cos(angle) * r;
+          const y = arc.y + Math.sin(angle) * r;
+
+          ctx2.save();
+          ctx2.textAlign = 'center';
+          ctx2.textBaseline = 'middle';
+
+          // Percentage - bold
+          ctx2.font = 'bold 11px Inter, sans-serif';
+          ctx2.fillStyle = '#fff';
+          ctx2.shadowColor = 'rgba(0,0,0,0.3)';
+          ctx2.shadowBlur = 3;
+          ctx2.fillText(pct + '%', x, y - 7);
+
+          // Count
+          ctx2.font = '9px Inter, sans-serif';
+          ctx2.fillStyle = 'rgba(255,255,255,0.85)';
+          ctx2.fillText(val + ' cmd', x, y + 6);
+          ctx2.restore();
+        });
+      }
+    };
+
     const ctxPie = document.getElementById('chart-pie').getContext('2d');
     chartPie = new Chart(ctxPie, {
       type: 'doughnut',
+      plugins: [pieLabelsPlugin],
       data: {
         labels: ranges.map(r => r.label),
         datasets: [{
           data: counts,
-          backgroundColor: ranges.map(r => r.color + 'CC'),
-          borderColor: ranges.map(r => r.color),
-          borderWidth: 2,
-          hoverOffset: 8
+          backgroundColor: ['#C8A882DD','#8B1A1ADD','#C97B2ADD','#2E6B3EDD'],
+          borderColor: ['#C8A882','#8B1A1A','#C97B2A','#2E6B3E'],
+          borderWidth: 2.5,
+          hoverOffset: 10,
+          spacing: 3
         }]
       },
       options: {
         responsive: true,
-        cutout: '62%',
+        cutout: '55%',
+        layout: { padding: 8 },
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor: 'rgba(61,43,31,0.88)',
+            backgroundColor: 'rgba(61,43,31,0.92)',
             titleColor: '#FAF6F0',
             bodyColor: '#EDE5D8',
-            padding: 10,
-            cornerRadius: 10,
+            padding: 12,
+            cornerRadius: 12,
             callbacks: {
               label: c => {
                 const pct = pieTotal > 0 ? ((c.parsed/pieTotal)*100).toFixed(0) : 0;
-                return ` ${c.parsed} commande${c.parsed>1?'s':''} (${pct}%)`;
+                return ` ${c.parsed} commande${c.parsed>1?'s':''} · ${pct}%`;
               }
             }
           }
@@ -1852,15 +1901,6 @@ function renderDonnees(type) {
     });
 
     // Build custom legend
-    const legendHtml = ranges.map((r, i) => {
-      const pct = pieTotal > 0 ? ((counts[i]/pieTotal)*100).toFixed(0) : 0;
-      return `<div class="pie-legend-item">
-        <div class="pie-legend-dot" style="background:${r.color}"></div>
-        <span class="pie-legend-label">${r.label}</span>
-        <span class="pie-legend-pct">${pct}%</span>
-      </div>`;
-    }).join('');
-
     setTimeout(() => {
       const wrap = document.getElementById('chart-pie').closest('.donnees-pie-wrap');
       let legend = wrap.querySelector('.pie-legend');
@@ -1869,8 +1909,15 @@ function renderDonnees(type) {
         legend.className = 'pie-legend';
         wrap.appendChild(legend);
       }
-      legend.innerHTML = legendHtml;
-    }, 100);
+      legend.innerHTML = ranges.map((r, i) => {
+        const pct = pieTotal > 0 ? ((counts[i]/pieTotal)*100).toFixed(0) : 0;
+        return `<div class="pie-legend-item">
+          <div class="pie-legend-dot" style="background:${r.color}"></div>
+          <span class="pie-legend-label">${r.label}</span>
+          <span class="pie-legend-pct">${counts[i]} · ${pct}%</span>
+        </div>`;
+      }).join('');
+    }, 150);
 
   } else {
     // Group by year
