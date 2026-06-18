@@ -1737,7 +1737,28 @@ function renderDonnees(type) {
     gradient.addColorStop(0, 'rgba(139,26,26,0.5)');
     gradient.addColorStop(1, 'rgba(139,26,26,0.03)');
 
+    // Plugin to always draw price labels on top of everything
+    const priceLabelsPlugin = {
+      id: 'priceLabels',
+      afterDraw(chart) {
+        const ctx2 = chart.ctx;
+        const meta = chart.getDatasetMeta(0);
+        ctx2.save();
+        ctx2.textAlign = 'center';
+        ctx2.font = 'bold 8px Inter, sans-serif';
+        ctx2.fillStyle = 'rgba(139,26,26,0.95)';
+        ctx2.shadowColor = 'rgba(255,255,255,0.9)';
+        ctx2.shadowBlur = 4;
+        meta.data.forEach((bar, idx) => {
+          const val = data[idx];
+          if (val > 0) ctx2.fillText(val.toFixed(0)+'€', bar.x, bar.y - 14);
+        });
+        ctx2.restore();
+      }
+    };
+
     chartMensuel = new Chart(ctx, {
+      plugins: [priceLabelsPlugin],
       data: {
         labels,
         datasets: [
@@ -1802,13 +1823,16 @@ function renderDonnees(type) {
             const chart = this;
             const ctx2 = chart.ctx;
             ctx2.textAlign = 'center';
-            ctx2.font = 'bold 9px Inter, sans-serif';
-            ctx2.fillStyle = 'rgba(139,26,26,0.9)';
+            ctx2.font = 'bold 8px Inter, sans-serif';
+            ctx2.fillStyle = 'rgba(139,26,26,0.95)';
+            ctx2.shadowColor = 'rgba(255,255,255,0.8)';
+            ctx2.shadowBlur = 3;
             const meta = chart.getDatasetMeta(0);
             meta.data.forEach((bar, idx) => {
               const val = data[idx];
-              if (val > 0) ctx2.fillText(val.toFixed(0)+'€', bar.x, bar.y - 20);
+              if (val > 0) ctx2.fillText(val.toFixed(0)+'€', bar.x, bar.y - 16);
             });
+            ctx2.shadowBlur = 0;
           }
         }
       }
