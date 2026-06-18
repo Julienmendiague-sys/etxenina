@@ -163,6 +163,51 @@
   }
 
 
+  .donnees-chart-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--gris);
+    margin: 18px 0 10px;
+  }
+
+  .donnees-pie-wrap {
+    background: var(--blanc);
+    border: 1.5px solid var(--beige);
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .pie-legend {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .pie-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: var(--brun);
+  }
+
+  .pie-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .pie-legend-label { font-weight: 600; }
+  .pie-legend-pct { color: var(--gris); margin-left: auto; font-weight: 700; }
+
   /* DONNÉES */
   .donnees-tabs {
     display: flex;
@@ -1343,6 +1388,10 @@
     <div id="donnees-mensuel">
       <div class="donnees-stats" id="stats-mensuel"></div>
       <canvas id="chart-mensuel" height="240"></canvas>
+      <div class="donnees-chart-title">🥧 Répartition des commandes</div>
+      <div class="donnees-pie-wrap">
+        <canvas id="chart-pie" height="260"></canvas>
+      </div>
     </div>
 
     <div id="donnees-annuel" style="display:none;">
@@ -1617,6 +1666,7 @@ function closeHomeMenu() {
 
 let chartMensuel = null;
 let chartMensuelLine = null;
+let chartPie = null;
 let chartAnnuel = null;
 
 function goToDonnees() {
@@ -1752,6 +1802,75 @@ function renderDonnees(type) {
         }
       }
     });
+
+    // Pie chart - commande ranges
+    if (chartPie) chartPie.destroy();
+    const ranges = [
+      { label: '0 – 50€',    min: 0,   max: 50,   color: '#C8A882' },
+      { label: '50 – 100€',  min: 50,  max: 100,  color: '#8B1A1A' },
+      { label: '100 – 200€', min: 100, max: 200,  color: '#C97B2A' },
+      { label: '200 – 500€', min: 200, max: 500,  color: '#2E6B3E' },
+    ];
+    const counts = ranges.map(r =>
+      commandes.filter(c => (c.prix||0) >= r.min && (c.prix||0) < r.max).length
+    );
+    const pieTotal = counts.reduce((s,v) => s+v, 0);
+
+    const ctxPie = document.getElementById('chart-pie').getContext('2d');
+    chartPie = new Chart(ctxPie, {
+      type: 'doughnut',
+      data: {
+        labels: ranges.map(r => r.label),
+        datasets: [{
+          data: counts,
+          backgroundColor: ranges.map(r => r.color + 'CC'),
+          borderColor: ranges.map(r => r.color),
+          borderWidth: 2,
+          hoverOffset: 8
+        }]
+      },
+      options: {
+        responsive: true,
+        cutout: '62%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(61,43,31,0.88)',
+            titleColor: '#FAF6F0',
+            bodyColor: '#EDE5D8',
+            padding: 10,
+            cornerRadius: 10,
+            callbacks: {
+              label: c => {
+                const pct = pieTotal > 0 ? ((c.parsed/pieTotal)*100).toFixed(0) : 0;
+                return ` ${c.parsed} commande${c.parsed>1?'s':''} (${pct}%)`;
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Build custom legend
+    const legendHtml = ranges.map((r, i) => {
+      const pct = pieTotal > 0 ? ((counts[i]/pieTotal)*100).toFixed(0) : 0;
+      return `<div class="pie-legend-item">
+        <div class="pie-legend-dot" style="background:${r.color}"></div>
+        <span class="pie-legend-label">${r.label}</span>
+        <span class="pie-legend-pct">${pct}%</span>
+      </div>`;
+    }).join('');
+
+    setTimeout(() => {
+      const wrap = document.getElementById('chart-pie').closest('.donnees-pie-wrap');
+      let legend = wrap.querySelector('.pie-legend');
+      if (!legend) {
+        legend = document.createElement('div');
+        legend.className = 'pie-legend';
+        wrap.appendChild(legend);
+      }
+      legend.innerHTML = legendHtml;
+    }, 100);
 
   } else {
     // Group by year
