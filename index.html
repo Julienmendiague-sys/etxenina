@@ -1862,10 +1862,26 @@ function renderDonnees(type) {
       }
     };
 
+    // Shadow plugin for depth effect
+    const shadowPlugin = {
+      id: 'shadowPlugin',
+      beforeDraw(chart) {
+        const ctx2 = chart.ctx;
+        ctx2.save();
+        ctx2.shadowColor = 'rgba(61,43,31,0.25)';
+        ctx2.shadowBlur = 12;
+        ctx2.shadowOffsetX = 3;
+        ctx2.shadowOffsetY = 4;
+      },
+      afterDraw(chart) {
+        chart.ctx.restore();
+      }
+    };
+
     const ctxPie = document.getElementById('chart-pie').getContext('2d');
     chartPie = new Chart(ctxPie, {
       type: 'doughnut',
-      plugins: [pieLabelsPlugin],
+      plugins: [pieLabelsPlugin, shadowPlugin],
       data: {
         labels: ranges.map(r => r.label),
         datasets: [{
@@ -1873,14 +1889,14 @@ function renderDonnees(type) {
           backgroundColor: ['#C8A882DD','#8B1A1ADD','#C97B2ADD','#2E6B3EDD'],
           borderColor: ['#C8A882','#8B1A1A','#C97B2A','#2E6B3E'],
           borderWidth: 2.5,
-          hoverOffset: 10,
+          hoverOffset: 22,
           spacing: 3
         }]
       },
       options: {
         responsive: true,
         cutout: '55%',
-        layout: { padding: 8 },
+        layout: { padding: 18 },
         plugins: {
           legend: { display: false },
           tooltip: {
