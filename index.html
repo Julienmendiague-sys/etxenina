@@ -1818,23 +1818,7 @@ function renderDonnees(type) {
             border: { display: false }
           }
         },
-        animation: {
-          onComplete: function() {
-            const chart = this;
-            const ctx2 = chart.ctx;
-            ctx2.textAlign = 'center';
-            ctx2.font = 'bold 8px Inter, sans-serif';
-            ctx2.fillStyle = 'rgba(139,26,26,0.95)';
-            ctx2.shadowColor = 'rgba(255,255,255,0.8)';
-            ctx2.shadowBlur = 3;
-            const meta = chart.getDatasetMeta(0);
-            meta.data.forEach((bar, idx) => {
-              const val = data[idx];
-              if (val > 0) ctx2.fillText(val.toFixed(0)+'€', bar.x, bar.y - 16);
-            });
-            ctx2.shadowBlur = 0;
-          }
-        }
+        animation: false
       }
     });
 
