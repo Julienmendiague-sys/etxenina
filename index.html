@@ -1719,7 +1719,7 @@ function renderDonnees(type) {
               ctx2.fillStyle = 'rgba(139,26,26,0.85)';
               meta.data.forEach((bar, idx) => {
                 const val = dataset.data[idx];
-                if (val > 0) ctx2.fillText(val.toFixed(0)+'€', bar.x, bar.y - 5);
+                if (val > 0) ctx2.fillText(val.toFixed(0)+'€', bar.x, bar.y - 18);
               });
             });
           }
