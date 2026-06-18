@@ -1342,9 +1342,7 @@
 
     <div id="donnees-mensuel">
       <div class="donnees-stats" id="stats-mensuel"></div>
-      <canvas id="chart-mensuel" height="220"></canvas>
-      <div style="margin-top:14px; font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--gris); margin-bottom:8px;">Courbe d'évolution</div>
-      <canvas id="chart-mensuel-line" height="180"></canvas>
+      <canvas id="chart-mensuel" height="240"></canvas>
     </div>
 
     <div id="donnees-annuel" style="display:none;">
@@ -1671,93 +1669,57 @@ function renderDonnees(type) {
       </div>`;
 
     if (chartMensuel) chartMensuel.destroy();
+    if (chartMensuelLine) chartMensuelLine.destroy();
     const ctx = document.getElementById('chart-mensuel').getContext('2d');
     chartMensuel = new Chart(ctx, {
-      type: 'bar',
       data: {
         labels,
-        datasets: [{
-          label: 'CA (€)',
-          data,
-          backgroundColor: 'rgba(139,26,26,0.15)',
-          borderColor: 'rgba(139,26,26,0.8)',
-          borderWidth: 2,
-          borderRadius: 8,
-          tension: 0.4
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { display: false },
-          tooltip: { callbacks: { label: ctx => ctx.parsed.y + ' €' } },
-          datalabels: {
-            display: false
+        datasets: [
+          {
+            type: 'bar',
+            label: 'CA barres',
+            data,
+            backgroundColor: 'rgba(139,26,26,0.15)',
+            borderColor: 'rgba(139,26,26,0.7)',
+            borderWidth: 2,
+            borderRadius: 8,
+            yAxisID: 'y'
+          },
+          {
+            type: 'line',
+            label: 'CA courbe',
+            data,
+            backgroundColor: 'rgba(201,123,42,0.06)',
+            borderColor: 'rgba(201,123,42,0.85)',
+            borderWidth: 2.5,
+            pointBackgroundColor: 'rgba(201,123,42,0.9)',
+            pointRadius: 4,
+            tension: 0.4,
+            fill: false,
+            yAxisID: 'y'
           }
-        },
-        scales: {
-          y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { callback: v => v+'€' } },
-          x: { grid: { display: false } }
-        },
-        animation: {
-          onComplete: function() {
-            const chart = this;
-            const ctx2 = chart.ctx;
-            ctx2.font = '9px Inter, sans-serif';
-            ctx2.fillStyle = 'rgba(139,26,26,0.8)';
-            ctx2.textAlign = 'center';
-            chart.data.datasets.forEach((dataset, i) => {
-              const meta = chart.getDatasetMeta(i);
-              meta.data.forEach((bar, idx) => {
-                const val = dataset.data[idx];
-                if (val > 0) {
-                  ctx2.fillText(val.toFixed(0)+'€', bar.x, bar.y - 4);
-                }
-              });
-            });
-          }
-        }
-      }
-    });
-
-    // Line chart - evolution
-    if (chartMensuelLine) chartMensuelLine.destroy();
-    const ctxLine = document.getElementById('chart-mensuel-line').getContext('2d');
-    chartMensuelLine = new Chart(ctxLine, {
-      type: 'line',
-      data: {
-        labels,
-        datasets: [{
-          label: 'CA (€)',
-          data,
-          backgroundColor: 'rgba(139,26,26,0.06)',
-          borderColor: 'rgba(139,26,26,0.7)',
-          borderWidth: 2.5,
-          pointBackgroundColor: 'rgba(139,26,26,0.85)',
-          pointRadius: 4,
-          tension: 0.4,
-          fill: true
-        }]
+        ]
       },
       options: {
         responsive: true,
         plugins: { legend: { display: false } },
         scales: {
-          y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.04)' }, ticks: { callback: v => v+'€', font: { size: 10 } } },
+          y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { callback: v => v+'€', font: { size: 10 } } },
           x: { grid: { display: false }, ticks: { font: { size: 10 } } }
         },
         animation: {
           onComplete: function() {
             const chart = this;
             const ctx2 = chart.ctx;
-            ctx2.font = '9px Inter, sans-serif';
-            ctx2.fillStyle = 'rgba(139,26,26,0.8)';
             ctx2.textAlign = 'center';
             chart.data.datasets.forEach((dataset, i) => {
+              if (i !== 0) return;
               const meta = chart.getDatasetMeta(i);
-              meta.data.forEach((point, idx) => {
+              ctx2.font = 'bold 9px Inter, sans-serif';
+              ctx2.fillStyle = 'rgba(139,26,26,0.85)';
+              meta.data.forEach((bar, idx) => {
                 const val = dataset.data[idx];
-                if (val > 0) ctx2.fillText(val.toFixed(0)+'€', point.x, point.y - 9);
+                if (val > 0) ctx2.fillText(val.toFixed(0)+'€', bar.x, bar.y - 5);
               });
             });
           }
