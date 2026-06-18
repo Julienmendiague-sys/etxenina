@@ -1688,7 +1688,7 @@ function renderDonnees(type) {
           {
             type: 'line',
             label: 'CA courbe',
-            data,
+            data: data.map(v => v * 0.6),
             backgroundColor: 'rgba(201,123,42,0.06)',
             borderColor: 'rgba(201,123,42,0.85)',
             borderWidth: 2.5,
