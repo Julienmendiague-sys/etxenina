@@ -378,10 +378,10 @@
     gap: 6px;
     background: rgba(255,255,255,0.88);
     border-radius: 30px;
-    padding: 6px 12px 6px 8px;
+    padding: 6px 10px;
     box-shadow: 0 1px 8px rgba(61,43,31,0.06);
-    width: 90px;
-    justify-content: flex-start;
+    width: 78px;
+    justify-content: center;
   }
 
   .dash-stat-dot {
@@ -1793,17 +1793,26 @@ function renderDonnees(type) {
         const meta = chart.getDatasetMeta(0);
         ctx2.save();
         ctx2.font = 'bold 8px Inter, sans-serif';
-        ctx2.fillStyle = 'rgba(139,26,26,0.95)';
-        ctx2.shadowColor = 'rgba(255,255,255,0.9)';
-        ctx2.shadowBlur = 3;
+        ctx2.textAlign = 'center';
+        ctx2.textBaseline = 'bottom';
         meta.data.forEach((bar, idx) => {
           const val = data[idx];
           if (val > 0) {
+            const x = bar.x;
+            const y = bar.y - 5;
+            const text = val.toFixed(0) + '€';
+            const metrics = ctx2.measureText(text);
+            const w = metrics.width + 6;
+            const h = 12;
+            // White highlight background
             ctx2.save();
-            ctx2.translate(bar.x, bar.y - 6);
-            ctx2.rotate(-Math.PI / 2);
-            ctx2.textAlign = 'left';
-            ctx2.fillText(val.toFixed(0)+'€', 0, 0);
+            ctx2.fillStyle = 'rgba(255,255,255,0.85)';
+            ctx2.beginPath();
+            ctx2.roundRect(x - w/2, y - h, w, h, 3);
+            ctx2.fill();
+            // Red text on top
+            ctx2.fillStyle = 'rgba(139,26,26,0.95)';
+            ctx2.fillText(text, x, y - 1);
             ctx2.restore();
           }
         });
@@ -1846,6 +1855,7 @@ function renderDonnees(type) {
       options: {
         responsive: true,
         interaction: { mode: 'index', intersect: false },
+        layout: { padding: { top: 22, left: 0, right: 0, bottom: 0 } },
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -1862,6 +1872,7 @@ function renderDonnees(type) {
         scales: {
           y: {
             beginAtZero: true,
+            grace: '15%',
             grid: { color: 'rgba(0,0,0,0.04)', drawBorder: false },
             ticks: { callback: v => v+'€', font: { size: 10, family: 'Inter' }, color: '#7A6A60' },
             border: { display: false }
