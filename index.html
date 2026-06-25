@@ -380,6 +380,8 @@
     border-radius: 30px;
     padding: 6px 12px 6px 8px;
     box-shadow: 0 1px 8px rgba(61,43,31,0.06);
+    width: 90px;
+    justify-content: flex-start;
   }
 
   .dash-stat-dot {
@@ -1444,7 +1446,7 @@
 
     <div id="donnees-mensuel">
       <div class="donnees-stats" id="stats-mensuel"></div>
-      <canvas id="chart-mensuel" height="240"></canvas>
+      <canvas id="chart-mensuel" height="260"></canvas>
       <div class="donnees-chart-title">🥧 Répartition des commandes</div>
       <div class="donnees-pie-wrap">
         <canvas id="chart-pie" height="230"></canvas>
@@ -1790,14 +1792,20 @@ function renderDonnees(type) {
         const ctx2 = chart.ctx;
         const meta = chart.getDatasetMeta(0);
         ctx2.save();
-        ctx2.textAlign = 'center';
         ctx2.font = 'bold 8px Inter, sans-serif';
         ctx2.fillStyle = 'rgba(139,26,26,0.95)';
         ctx2.shadowColor = 'rgba(255,255,255,0.9)';
-        ctx2.shadowBlur = 4;
+        ctx2.shadowBlur = 3;
         meta.data.forEach((bar, idx) => {
           const val = data[idx];
-          if (val > 0) ctx2.fillText(val.toFixed(0)+'€', bar.x, bar.y - 14);
+          if (val > 0) {
+            ctx2.save();
+            ctx2.translate(bar.x, bar.y - 6);
+            ctx2.rotate(-Math.PI / 2);
+            ctx2.textAlign = 'left';
+            ctx2.fillText(val.toFixed(0)+'€', 0, 0);
+            ctx2.restore();
+          }
         });
         ctx2.restore();
       }
@@ -1822,7 +1830,7 @@ function renderDonnees(type) {
           {
             type: 'line',
             label: 'Évolution',
-            data: data.map(v => v * 0.95),
+            data: data.map(v => v * 1.0),
             borderColor: 'rgba(201,123,42,0.9)',
             borderWidth: 2,
             pointBackgroundColor: '#fff',
