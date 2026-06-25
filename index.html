@@ -1855,7 +1855,7 @@ function renderDonnees(type) {
       options: {
         responsive: true,
         interaction: { mode: 'index', intersect: false },
-        layout: { padding: { top: 22, left: 0, right: 0, bottom: 0 } },
+        layout: { padding: { top: 28, left: 0, right: 0, bottom: 0 } },
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -1872,7 +1872,7 @@ function renderDonnees(type) {
         scales: {
           y: {
             beginAtZero: true,
-            grace: '15%',
+            grace: '3%',
             grid: { color: 'rgba(0,0,0,0.04)', drawBorder: false },
             ticks: { callback: v => v+'€', font: { size: 10, family: 'Inter' }, color: '#7A6A60' },
             border: { display: false }
@@ -2812,4 +2812,4 @@ window.addEventListener('load', () => {
 });
 </script>
 </body>
-</html> 
+</html>
