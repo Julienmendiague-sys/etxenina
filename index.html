@@ -2411,19 +2411,15 @@ async function analyzeFacture(input) {
   input.value = '';
 
   try {
+    // Read file as data URL first
+    const fileDataURL = await fileToDataURL(file);
+
     if (file.type === 'application/pdf') {
-      // Extract text directly from PDF
       const text = await extractTextFromPDF(file);
       factureExtracted = parseFactureText(text);
-
-      // Use fullName as prenom if available
-      if (factureExtracted.fullName) {
-        factureExtracted.prenom = factureExtracted.fullName;
-      }
     } else {
-      // For images — show manual form since no API
       factureExtracted = { prenom: null, numero_facture: null, prix: null };
-      showToast('💡 Photo importée — remplis les infos ci-dessous');
+      showToast('💡 Photo importée — remplis les infos manuellement');
     }
 
     // Store the file
