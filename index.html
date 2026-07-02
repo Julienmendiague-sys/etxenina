@@ -1456,7 +1456,11 @@
   input[type="file"] { display: none; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script>
+  if (window.pdfjsLib) {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+</script>
 </head>
 <body>
 <div id="loading-screen">
@@ -2348,44 +2352,51 @@ let factureSelectedId = null;
 
 async function extractTextFromPDF(file) {
   const arrayBuffer = await file.arrayBuffer();
-  const pdfjsLib = window['pdfjs-dist/build/pdf'];
-  if (pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  // PDF.js via cdnjs exports as window.pdfjsLib
+  const lib = window.pdfjsLib;
+  if (!lib) throw new Error('PDF.js non chargé');
+  lib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const pdf = await lib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
   let fullText = '';
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    fullText += content.items.map(item => item.str).join(' ') + '\n';
+    const textContent = await page.getTextContent();
+    fullText += textContent.items.map(item => item.str).join(' ') + '\n';
   }
   return fullText;
 }
 
 function parseFactureText(text) {
-  const result = { prenom: null, numero_facture: null, prix: null };
+  const result = { prenom: null, numero_facture: null, prix: null, fullName: null };
+  console.log('PDF TEXT:', text.substring(0, 500));
 
-  // Extract invoice number
+  // Extract invoice number — look for standalone number near "FACTURE" or date
   const numMatch = text.match(/(?:N[°º]?\s*FACTURE|FACTURE\s*N[°º]?)\s*[:\s]*(\d{3,6})/i)
-    || text.match(/\b(\d{4})\b\s+\d{2}\/\d{2}\/\d{4}/);
+    || text.match(/(\d{3,6})\s+\d{2}\/\d{2}\/\d{4}/);
   if (numMatch) result.numero_facture = numMatch[1];
 
-  // Extract client name — look for "FACTURER À" then take next ALL CAPS line
-  // Format is usually "NOM PRENOM" — we want the last word (prénom)
-  const facturerMatch = text.match(/FACTURER?\s*[AÀ]\s+((?:[A-Z][A-Z\-]+\s*){1,5})/);
-  if (facturerMatch) {
-    const fullName = facturerMatch[1].trim();
-    result.fullName = fullName;
-    // Last word = prénom (e.g. "MENDIAGUE JULIEN MARTIAL" → "MARTIAL")
-    // But we want to search commandes by first name which could be any part
-    const parts = fullName.split(/\s+/).filter(p => p.length > 1);
-    // Take last word as prénom
-    result.prenom = parts[parts.length - 1] || parts[0];
+  // Extract client name — after "FACTURER À" keyword, grab the all-caps name
+  // PDF text comes concatenated, so we look for the pattern
+  const facturerIdx = text.search(/FACTURER?\s*[AÀ]/i);
+  if (facturerIdx >= 0) {
+    const after = text.substring(facturerIdx + 10, facturerIdx + 100);
+    // Match sequences of uppercase words (the client name)
+    const nameMatch = after.match(/([A-Z][A-Z\-]+(?:\s+[A-Z][A-Z\-]+){0,4})/);
+    if (nameMatch) {
+      const fullName = nameMatch[1].trim();
+      result.fullName = fullName;
+      // Take last word as first name (MENDIAGUE JULIEN MARTIAL → MARTIAL)
+      const parts = fullName.split(/\s+/).filter(p => p.length > 1);
+      result.prenom = parts[parts.length - 1] || parts[0];
+    }
   }
 
-  // Extract total
-  const totalMatch = text.match(/TOTAL\s+(\d+[.,]\d{2})\s*€/i)
-    || text.match(/(\d+[.,]\d{2})\s*€\s*$/m);
-  if (totalMatch) {
-    result.prix = parseFloat(totalMatch[1].replace(',', '.'));
+  // Extract total — look for TOTAL followed by amount
+  const allTotals = [...text.matchAll(/TOTAL\s+(\d+[.,]\d{2})\s*€?/gi)];
+  if (allTotals.length > 0) {
+    // Take the last TOTAL (the grand total)
+    const last = allTotals[allTotals.length - 1];
+    result.prix = parseFloat(last[1].replace(',', '.'));
   }
 
   return result;
@@ -2416,14 +2427,13 @@ async function analyzeFacture(input) {
     }
 
     // Store the file
-    const fileBase64 = await fileToDataURL(file);
     const stored = {
       id: Date.now(),
       date: new Date().toISOString(),
       name: file.name || 'facture',
       type: file.type,
-      data: fileBase64,
-      client_name: factureExtracted.prenom || ''
+      data: fileDataURL,
+      client_name: factureExtracted.fullName || factureExtracted.prenom || ''
     };
     await saveStoredFacture(stored);
     renderFactureList();
@@ -2448,10 +2458,12 @@ function showFactureResult() {
   const prenom = factureExtracted.prenom || '';
   const numFacture = factureExtracted.numero_facture || '';
   const prix = factureExtracted.prix;
+  const fullName = factureExtracted.fullName || prenom;
 
-  // Find matching commandes by prenom
+  // Search by any word of the full name (handles "MENDIAGUE JULIEN MARTIAL" → finds "Julien")
+  const nameParts = fullName.toLowerCase().split(/\s+/).filter(p => p.length > 2);
   const matches = commandes.filter(c =>
-    prenom && c.prenom.toLowerCase().includes(prenom.toLowerCase())
+    nameParts.length > 0 && nameParts.some(part => c.prenom.toLowerCase().includes(part))
   );
 
   const matchesEl = document.getElementById('facture-matches');
@@ -2462,7 +2474,7 @@ function showFactureResult() {
   applyBtn.disabled = true;
 
   if (matches.length === 0) {
-    matchesEl.innerHTML = `<div style="color:var(--gris);font-size:0.82rem;margin-bottom:8px;">Aucune commande trouvée pour "${prenom}"</div>`;
+    matchesEl.innerHTML = `<div style="color:var(--gris);font-size:0.82rem;margin-bottom:8px;">Aucune commande trouvée pour "${fullName || prenom}"</div>`;
   } else {
     matchesEl.innerHTML = '<div style="font-size:0.72rem;font-weight:600;color:var(--gris);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Commande(s) correspondante(s)</div>' +
       matches.map(c => {
