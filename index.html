@@ -1419,11 +1419,12 @@
     background: var(--blanc);
     border-radius: 12px;
     padding: 12px 14px;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
     border: 1.5px solid var(--beige);
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
+    box-shadow: 0 1px 6px rgba(61,43,31,0.05);
   }
 
   .facture-card-left { display: flex; flex-direction: column; gap: 2px; }
@@ -1757,7 +1758,7 @@
       <button class="btn-save" style="margin-top:12px;" id="facture-apply-btn" onclick="applyFacture()" disabled>Appliquer à la commande sélectionnée</button>
     </div>
 
-    <div class="facture-list" id="facture-list"></div>
+    <div id="facture-stored-list"></div>
   </div>
 </div>
 
@@ -2385,6 +2386,17 @@ async function analyzeFacture(input) {
     const clean = text.replace(/```json|```/g, '').trim();
     factureExtracted = JSON.parse(clean);
 
+    // Store the file
+    const stored = {
+      id: Date.now(),
+      date: new Date().toISOString(),
+      name: file.name || 'facture',
+      type: file.type,
+      data: 'data:' + file.type + ';base64,' + await fileToBase64(file),
+      clientName: factureExtracted.prenom || ''
+    };
+    saveStoredFacture(stored);
+    renderFactureList();
     showFactureResult();
   } catch(e) {
     showToast('❌ Erreur analyse: ' + e.message.substring(0, 40));
@@ -2477,25 +2489,77 @@ async function applyFacture() {
   }
 }
 
+let facturesList = [];
+
+async function loadFactures() {
+  try {
+    facturesList = await sbFetch('factures?order=id.desc') || [];
+  } catch(e) {
+    facturesList = [];
+  }
+  renderFactureList();
+}
+
+async function saveStoredFacture(facture) {
+  try {
+    await sbFetch('factures', { method: 'POST', prefer: 'return=minimal', body: JSON.stringify(facture) });
+    facturesList.unshift(facture);
+  } catch(e) {
+    showToast('\u274C Erreur sauvegarde facture');
+  }
+}
+
+async function deleteStoredFacture(id) {
+  try {
+    await sbFetch('factures?id=eq.' + id, { method: 'DELETE' });
+    facturesList = facturesList.filter(f => f.id !== id);
+    renderFactureList();
+    showToast('\U0001F5D1 Facture supprim\u00e9e');
+  } catch(e) {
+    showToast('\u274C Erreur suppression');
+  }
+}
+
+async function clearAllFactures() {
+  if (!confirm('Supprimer toutes les factures ?')) return;
+  try {
+    await sbFetch('factures?id=gt.0', { method: 'DELETE' });
+    facturesList = [];
+    renderFactureList();
+    showToast('\U0001F5D1 Factures effac\u00e9es');
+  } catch(e) {
+    showToast('\u274C Erreur suppression');
+  }
+}
+
 function renderFactureList() {
-  const el = document.getElementById('facture-list');
-  const recent = commandes.filter(c => c.facture).slice(0, 20);
-  if (recent.length === 0) {
-    el.innerHTML = `<div class="empty-state"><div class="icon">📄</div><p>Aucune facture enregistrée</p></div>`;
+  const el = document.getElementById('facture-stored-list');
+  if (facturesList.length === 0) {
+    el.innerHTML = `<div class="empty-state"><div class="icon">\U0001F4C4</div><p>Aucune facture enregistr\u00e9e</p></div>`;
     return;
   }
-  el.innerHTML = '<div style="font-size:0.72rem;font-weight:600;color:var(--gris);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Commandes avec facture</div>' +
-    recent.map(c => {
-      const dateStr = c.date ? new Date(c.date).toLocaleDateString('fr-FR', {day:'2-digit', month:'short', year:'numeric'}) : '—';
-      return `<div class="facture-card">
-        <div class="facture-card-left">
-          <div class="facture-card-name">${c.prenom}</div>
-          <div class="facture-card-date">${dateStr}</div>
+  el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+    <div style="font-size:0.72rem;font-weight:600;color:var(--gris);text-transform:uppercase;letter-spacing:0.06em;">Mes factures</div>
+    <button onclick="clearAllFactures()" style="background:none;border:none;color:var(--gris);font-size:0.72rem;font-weight:600;cursor:pointer;text-decoration:underline;">Tout effacer</button>
+  </div>` +
+    facturesList.map(f => {
+      const dateStr = f.date ? new Date(f.date).toLocaleDateString('fr-FR', {day:'2-digit', month:'short', year:'numeric'}) : '\u2014';
+      const isImage = f.type && f.type.startsWith('image/');
+      const preview = isImage
+        ? `<img src="${f.data}" style="width:100%;border-radius:10px;margin-top:10px;display:block;" />`
+        : `<div style="display:flex;align-items:center;gap:8px;margin-top:10px;background:var(--beige);border-radius:8px;padding:8px 12px;">
+             <span style="font-size:1.2rem;">\U0001F4CE</span>
+             <span style="font-size:0.8rem;color:var(--brun);font-weight:600;">${f.name || 'facture.pdf'}</span>
+           </div>`;
+      return `<div class="facture-card" style="flex-direction:column;align-items:stretch;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div class="facture-card-name">${f.client_name || 'Facture'}</div>
+            <div class="facture-card-date">${dateStr}</div>
+          </div>
+          <button onclick="deleteStoredFacture(${f.id})" style="background:none;border:none;color:var(--gris);font-size:1.1rem;cursor:pointer;">\U0001F5D1</button>
         </div>
-        <div class="facture-card-right">
-          <div class="facture-card-num">N°${c.facture}</div>
-          <div class="facture-card-prix">${c.prix ? c.prix.toFixed(2)+'€' : '—'}</div>
-        </div>
+        ${preview}
       </div>`;
     }).join('');
 }
