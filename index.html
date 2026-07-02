@@ -2363,26 +2363,27 @@ async function extractTextFromPDF(file) {
 function parseFactureText(text) {
   const result = { prenom: null, numero_facture: null, prix: null };
 
-  // Extract invoice number - look for patterns like "1037", "N° 1037", "FACTURE 1037"
-  const numMatch = text.match(/(?:N[°º]?\s*FACTURE|FACTURE\s*N[°º]?|FACTURE)\s*[:\s]*(\d{3,6})/i)
-    || text.match(/\b(\d{4})\b(?=\s*\d{2}\/\d{2}\/\d{4})/);
+  // Extract invoice number
+  const numMatch = text.match(/(?:N[°º]?\s*FACTURE|FACTURE\s*N[°º]?)\s*[:\s]*(\d{3,6})/i)
+    || text.match(/\b(\d{4})\b\s+\d{2}\/\d{2}\/\d{4}/);
   if (numMatch) result.numero_facture = numMatch[1];
 
-  // Extract client name - look for "FACTURER À" section or common name patterns
-  const nameMatch = text.match(/FACTURER?\s+[AÀ]\s+([A-Z][A-Z\s\-]{2,40})/i)
-    || text.match(/Client\s*[:\-]\s*([A-Z][A-Za-z\s\-]{2,30})/i);
-  if (nameMatch) {
-    // Get first name only
-    const fullName = nameMatch[1].trim();
-    const parts = fullName.split(/\s+/);
-    // Usually "NOM PRÉNOM" — take first word as surname, try to get given name
-    result.prenom = parts[parts.length - 1] || parts[0];
+  // Extract client name — look for "FACTURER À" then take next ALL CAPS line
+  // Format is usually "NOM PRENOM" — we want the last word (prénom)
+  const facturerMatch = text.match(/FACTURER?\s*[AÀ]\s+((?:[A-Z][A-Z\-]+\s*){1,5})/);
+  if (facturerMatch) {
+    const fullName = facturerMatch[1].trim();
     result.fullName = fullName;
+    // Last word = prénom (e.g. "MENDIAGUE JULIEN MARTIAL" → "MARTIAL")
+    // But we want to search commandes by first name which could be any part
+    const parts = fullName.split(/\s+/).filter(p => p.length > 1);
+    // Take last word as prénom
+    result.prenom = parts[parts.length - 1] || parts[0];
   }
 
-  // Extract total - look for TOTAL amount
-  const totalMatch = text.match(/TOTAL\s*[:\s]*(\d+[.,]\d{2})\s*[€E]/i)
-    || text.match(/(\d+[.,]\d{2})\s*€(?:\s*$|\s*\n)/m);
+  // Extract total
+  const totalMatch = text.match(/TOTAL\s+(\d+[.,]\d{2})\s*€/i)
+    || text.match(/(\d+[.,]\d{2})\s*€\s*$/m);
   if (totalMatch) {
     result.prix = parseFloat(totalMatch[1].replace(',', '.'));
   }
