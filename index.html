@@ -275,12 +275,18 @@
     letter-spacing: 0.05em;
   }
 
-  canvas {
+  #chart-mensuel, #chart-annuel {
     width: 100% !important;
     border-radius: 12px;
     background: var(--blanc);
     padding: 12px;
     border: 1.5px solid var(--beige);
+  }
+
+  #chart-pie {
+    border: none;
+    background: none;
+    padding: 0;
   }
 
   /* LOCK SCREEN */
@@ -1455,6 +1461,7 @@
 
   input[type="file"] { display: none; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src='https://unpkg.com/tesseract.js@4/dist/tesseract.min.js'></script>
 <script>
@@ -3390,4 +3397,4 @@ window.addEventListener('load', () => {
 });
 </script>
 </body>
-</html> 
+</html>
