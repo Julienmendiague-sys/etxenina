@@ -1463,6 +1463,7 @@
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src='https://unpkg.com/tesseract.js@4/dist/tesseract.min.js'></script>
 <script>
   if (window.pdfjsLib) {
@@ -2438,60 +2439,93 @@ async function analyzeFacture(input) {
   input.value = '';
 
   try {
-    // Read file as data URL first
     const fileDataURL = await fileToDataURL(file);
+    factureExtracted = { prenom: null, numero_facture: null, prix: null, fullName: null };
 
     if (file.type === 'application/pdf') {
-      // First try to extract name from filename
-      // e.g. "Facture_1037_-__MENDIAGUE_JULIEN_MARTIAL.pdf"
-      const nameParts = file.name.replace(/\.pdf$/i,'').split(/[_\-\s]+/).filter(p => p.length > 1);
-      // Extract text from PDF with PDF.js
-      const text = await extractTextFromPDF(file);
-      factureExtracted = parseFactureText(text);
-      // Override name from filename if not found in text
-      if (!factureExtracted.fullName && nameParts.length >= 3) {
-        // Skip "Facture" and number, take remaining words as name
-        const skipWords = new Set(['facture','facturer','the','de','du','le','la','les']);
-        const nameFromFile = nameParts.filter(p => isNaN(p) && !skipWords.has(p.toLowerCase()));
-        if (nameFromFile.length >= 2) {
-          factureExtracted.fullName = nameFromFile.join(' ').toUpperCase();
-          factureExtracted.prenom = nameFromFile[nameFromFile.length - 1].toUpperCase();
-        }
+      // --- PDF : extract name from filename (most reliable for Etxenina invoices) ---
+      // filename format: "Facture_1037_-__MENDIAGUE_JULIEN_MARTIAL.pdf"
+      const baseName = file.name.replace(/\.pdf$/i, '');
+      const parts = baseName.split(/[_\-\s]+/).filter(p => p.length > 1);
+      const skipWords = new Set(['facture','facturer','de','du','le','la','les','un','une']);
+      const nameParts = parts.filter(p => isNaN(p) && !skipWords.has(p.toLowerCase()));
+      if (nameParts.length >= 2) {
+        factureExtracted.fullName = nameParts.join(' ').toUpperCase();
+        factureExtracted.prenom = nameParts[nameParts.length - 1].toUpperCase();
       }
+
+      // Also try to get invoice number and price from PDF text
+      try {
+        const text = await extractTextFromPDF(file);
+        const parsed = parseFactureText(text);
+        if (parsed.numero_facture) factureExtracted.numero_facture = parsed.numero_facture;
+        if (parsed.prix) factureExtracted.prix = parsed.prix;
+        if (!factureExtracted.fullName && parsed.fullName) {
+          factureExtracted.fullName = parsed.fullName;
+          factureExtracted.prenom = parsed.prenom;
+        }
+      } catch(e) {}
+
+      // Store as PDF
+      const stored = {
+        id: Date.now(),
+        date: new Date().toISOString(),
+        name: file.name,
+        type: 'application/pdf',
+        data: fileDataURL,
+        client_name: factureExtracted.fullName || factureExtracted.prenom || ''
+      };
+      await saveStoredFacture(stored);
+
     } else {
-      // Extract text from image with Tesseract.js OCR
-      document.getElementById('facture-analyzing-text').textContent = 'Analyse de la photo en cours…';
+      // --- IMAGE : OCR + convert to PDF ---
+      document.getElementById('facture-analyzing-text').textContent = 'Reconnaissance du texte…';
       try {
         const worker = await Tesseract.createWorker(['fra', 'eng'], 1, {
           logger: m => {
             if (m.status === 'recognizing text') {
               const pct = Math.round(m.progress * 100);
-              document.getElementById('facture-analyzing-text').textContent = `Reconnaissance du texte… ${pct}%`;
+              document.getElementById('facture-analyzing-text').textContent = `Reconnaissance… ${pct}%`;
             }
           }
         });
         const { data: { text } } = await worker.recognize(fileDataURL);
         await worker.terminate();
-        factureExtracted = parseFactureText(text);
+        const parsed = parseFactureText(text);
+        factureExtracted = parsed;
+      } catch(e) {}
+
+      // Convert image to PDF using jsPDF
+      document.getElementById('facture-analyzing-text').textContent = 'Conversion en PDF…';
+      let pdfDataURL = fileDataURL;
+      let pdfName = file.name.replace(/\.[^.]+$/, '') + '.pdf';
+      try {
+        const { jsPDF } = window.jspdf;
+        const img = new Image();
+        await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = fileDataURL; });
+        const pdf = new jsPDF({ orientation: img.width > img.height ? 'l' : 'p', unit: 'px', format: [img.width, img.height] });
+        pdf.addImage(fileDataURL, 'JPEG', 0, 0, img.width, img.height);
+        pdfDataURL = pdf.output('datauristring');
       } catch(e) {
-        factureExtracted = { prenom: null, numero_facture: null, prix: null };
+        // fallback: store as image
+        pdfName = file.name;
       }
+
+      const stored = {
+        id: Date.now(),
+        date: new Date().toISOString(),
+        name: pdfName,
+        type: 'application/pdf',
+        data: pdfDataURL,
+        client_name: factureExtracted.fullName || factureExtracted.prenom || ''
+      };
+      await saveStoredFacture(stored);
     }
 
-    // Store the file
-    const stored = {
-      id: Date.now(),
-      date: new Date().toISOString(),
-      name: file.name || 'facture',
-      type: file.type,
-      data: fileDataURL,
-      client_name: factureExtracted.fullName || factureExtracted.prenom || ''
-    };
-    await saveStoredFacture(stored);
     renderFactureList();
     showFactureResult();
   } catch(e) {
-    showToast('❌ Erreur: ' + e.message.substring(0, 50));
+    showToast('❌ Erreur: ' + e.message.substring(0, 60));
   } finally {
     document.getElementById('facture-analyzing').classList.remove('visible');
     document.getElementById('facture-analyzing-text').textContent = 'Analyse de la facture en cours…';
