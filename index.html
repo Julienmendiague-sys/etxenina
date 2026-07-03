@@ -2382,38 +2382,40 @@ function parseFactureText(text) {
     result.prix = parseFloat(last[1].replace(',', '.'));
   }
 
-  // Extract client name
-  // Strategy: find "FACTURER À" then look for the name on the SAME line or next line
-  // PDF text is concatenated — we look for the pattern: "FACTURER À NOM PRENOM PRENOM2"
-  // The name follows "FACTURER À" but might have spaces/newlines between
+  // Extract client name: look for "FACTURER À" followed by name
+  // In this PDF format: text has "FACTURER À NOM PRENOM PRENOM2" somewhere
+  // We try to find the line right after FACTURER À
+  const lines = text.split(/[\n\r]+/).map(l => l.trim()).filter(l => l.length > 0);
 
-  // Words to exclude (products, addresses, company names, QR text etc.)
   const excluded = new Set(['FACTURER','FACTURE','TOTAL','SIRET','SWIFT','IBAN','TVA',
     'DATE','ARTICLE','UNITE','QTE','MONTANT','CONDITIONS','CLIENT','COORDONNEES',
-    'BANCAIRES','REGLEMENT','SOUS','TAUX','POUR','TOUTE','QUESTION','SCANNEZ',
-    'AVIS','GOOGLE','ZURE','IRITZIAK','BALIO','SAS','BOSTAK','FAUX','FILET',
-    'CHEMIN','HASPARREN','ARCANGUES','PYRENEES','GASCOGNE','AGRIFRPP','BEF',
-    'CONDITIONNEMENT','CONCERNANT','ETXENINA','MILESKER','AINITZ','EGIN',
-    'NOUS','VOUS','REMERCIONS','CONFIANCE','BALIO','REF']);
+    'COORDONN','BANCAIRES','REGLEMENT','SOUS','TAUX','POUR','TOUTE','QUESTION',
+    'SCANNEZ','AVIS','GOOGLE','ZURE','IRITZIAK','BALIO','SAS','BOSTAK','FAUX','FILET',
+    'CHEMIN','HASPARREN','ARCANGUES','PYRENEES','GASCOGNE','AGRIFRPP','BEF','AGRI',
+    'CONDITIONNEMENT','CONCERNANT','ETXENINA','MILESKER','AINITZ','EGIN','NOUS',
+    'VOUS','REMERCIONS','CONFIANCE','REF','BANQUE','COMPTE','FRPP','GLEMENT','COOR',
+    'DONN','RES','IRES','MENT','NES']);
 
-  // Find "FACTURER À" position and extract what follows
-  const facturerIdx = text.toUpperCase().indexOf('FACTURER');
-  if (facturerIdx >= 0) {
-    // Get text from FACTURER onwards (up to 200 chars)
-    const chunk = text.substring(facturerIdx, facturerIdx + 200);
-    // Find all-caps words in this chunk, skip "FACTURER" and "À"
-    const capsWords = chunk.match(/[A-Z]{3,}/g) || [];
-    const nameWords = capsWords.filter(w => !excluded.has(w));
-    
-    if (nameWords.length >= 2) {
-      // Take first 2-3 words that look like a name
-      const nameParts = nameWords.slice(0, 3);
-      result.fullName = nameParts.join(' ');
-      // Last word = first name (MENDIAGUE JULIEN MARTIAL → MARTIAL)
-      result.prenom = nameParts[nameParts.length - 1];
-    } else if (nameWords.length === 1) {
-      result.fullName = nameWords[0];
-      result.prenom = nameWords[0];
+  // Look for FACTURER À line then check next lines
+  let foundFacturer = false;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].toUpperCase().includes('FACTURER')) {
+      foundFacturer = true;
+      // Check next 3 lines for a name
+      for (let j = i + 1; j <= Math.min(i + 3, lines.length - 1); j++) {
+        const line = lines[j].trim();
+        // A name line: mostly caps, 2+ words, short (not an address or long sentence)
+        if (line.length > 3 && line.length < 60) {
+          const words = line.split(/\s+/);
+          const capsWords = words.filter(w => /^[A-Z]{3,}$/.test(w) && !excluded.has(w));
+          if (capsWords.length >= 2) {
+            result.fullName = capsWords.join(' ');
+            result.prenom = capsWords[capsWords.length - 1];
+            break;
+          }
+        }
+      }
+      if (result.fullName) break;
     }
   }
 
@@ -2433,9 +2435,22 @@ async function analyzeFacture(input) {
     const fileDataURL = await fileToDataURL(file);
 
     if (file.type === 'application/pdf') {
+      // First try to extract name from filename
+      // e.g. "Facture_1037_-__MENDIAGUE_JULIEN_MARTIAL.pdf"
+      const nameParts = file.name.replace(/\.pdf$/i,'').split(/[_\-\s]+/).filter(p => p.length > 1);
       // Extract text from PDF with PDF.js
       const text = await extractTextFromPDF(file);
       factureExtracted = parseFactureText(text);
+      // Override name from filename if not found in text
+      if (!factureExtracted.fullName && nameParts.length >= 3) {
+        // Skip "Facture" and number, take remaining words as name
+        const skipWords = new Set(['facture','facturer','the','de','du','le','la','les']);
+        const nameFromFile = nameParts.filter(p => isNaN(p) && !skipWords.has(p.toLowerCase()));
+        if (nameFromFile.length >= 2) {
+          factureExtracted.fullName = nameFromFile.join(' ').toUpperCase();
+          factureExtracted.prenom = nameFromFile[nameFromFile.length - 1].toUpperCase();
+        }
+      }
     } else {
       // Extract text from image with Tesseract.js OCR
       document.getElementById('facture-analyzing-text').textContent = 'Reconnaissance du texte…';
@@ -2467,6 +2482,16 @@ async function analyzeFacture(input) {
     document.getElementById('facture-analyzing').classList.remove('visible');
     document.getElementById('facture-analyzing-text').textContent = 'Analyse de la facture en cours…';
   }
+}
+
+function openPdfData(dataUrl) {
+  const byteStr = atob(dataUrl.split(',')[1]);
+  const ab = new ArrayBuffer(byteStr.length);
+  const ia = new Uint8Array(ab);
+  for (let i = 0; i < byteStr.length; i++) ia[i] = byteStr.charCodeAt(i);
+  const blob = new Blob([ab], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
 }
 
 function fileToDataURL(file) {
@@ -2619,11 +2644,11 @@ function renderFactureList() {
       const isImage = f.type && f.type.startsWith('image/');
       const preview = isImage
         ? `<img src="${f.data}" style="width:100%;border-radius:10px;margin-top:10px;display:block;" />`
-        : `<a href="${f.data}" download="${f.name || 'facture.pdf'}" style="display:flex;align-items:center;gap:8px;margin-top:10px;background:var(--beige);border-radius:8px;padding:8px 12px;text-decoration:none;">
+        : `<div style="display:flex;align-items:center;gap:8px;margin-top:10px;background:var(--beige);border-radius:8px;padding:8px 12px;cursor:pointer;" onclick="openPdfData('${f.data}')">
              <span style="font-size:1.2rem;">📎</span>
-             <span style="font-size:0.8rem;color:var(--brun);font-weight:600;">${f.name || 'facture.pdf'}</span>
-             <span style="font-size:0.7rem;color:var(--rouge);margin-left:auto;font-weight:600;">Ouvrir</span>
-           </a>`;
+             <span style="font-size:0.8rem;color:var(--brun);font-weight:600;flex:1;">${f.name || 'facture.pdf'}</span>
+             <span style="font-size:0.7rem;color:var(--rouge);font-weight:700;">Ouvrir ›</span>
+           </div>`;
       return `<div class="facture-card" style="flex-direction:column;align-items:stretch;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <div>
