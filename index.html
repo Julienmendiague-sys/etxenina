@@ -2369,33 +2369,46 @@ async function extractTextFromPDF(file) {
 
 function parseFactureText(text) {
   const result = { prenom: null, numero_facture: null, prix: null, fullName: null };
-  console.log('PDF TEXT:', text.substring(0, 500));
 
-  // Extract invoice number — look for standalone number near "FACTURE" or date
+  // Extract invoice number
   const numMatch = text.match(/(?:N[°º]?\s*FACTURE|FACTURE\s*N[°º]?)\s*[:\s]*(\d{3,6})/i)
     || text.match(/(\d{3,6})\s+\d{2}\/\d{2}\/\d{4}/);
   if (numMatch) result.numero_facture = numMatch[1];
 
-  // Extract client name — after "FACTURER À" keyword, grab the all-caps name
-  // PDF text comes concatenated, so we look for the pattern
-  const facturerIdx = text.search(/FACTURER?\s*[AÀ]/i);
+  // Extract client name — try multiple patterns
+  // Pattern 1: after FACTURER À
+  let facturerIdx = text.search(/FACTURER?\s*[AÀ]/i);
   if (facturerIdx >= 0) {
-    const after = text.substring(facturerIdx + 10, facturerIdx + 100);
-    // Match sequences of uppercase words (the client name)
-    const nameMatch = after.match(/([A-Z][A-Z\-]+(?:\s+[A-Z][A-Z\-]+){0,4})/);
+    const after = text.substring(facturerIdx, facturerIdx + 150);
+    // Skip past "FACTURER À" keyword (10-15 chars) then find caps name
+    const nameMatch = after.match(/FACTURER?\s*[AÀ]\s+([A-Z][A-Z\-]+(?:\s+[A-Z][A-Z\-]+){0,4})/i);
     if (nameMatch) {
       const fullName = nameMatch[1].trim();
       result.fullName = fullName;
-      // Take last word as first name (MENDIAGUE JULIEN MARTIAL → MARTIAL)
       const parts = fullName.split(/\s+/).filter(p => p.length > 1);
       result.prenom = parts[parts.length - 1] || parts[0];
     }
   }
 
-  // Extract total — look for TOTAL followed by amount
+  // Pattern 2: look for "MENDIAGUE" style all-caps names if pattern 1 failed
+  if (!result.fullName) {
+    const capsNames = text.match(/([A-Z]{2,}(?:\s+[A-Z]{2,}){1,3})/g);
+    if (capsNames) {
+      // Filter out common header words
+      const excluded = ['FACTURE','TOTAL','SIRET','SWIFT','IBAN','TVA','DATE','ARTICLE','UNITE','QTE','MONTANT','CONDITIONS','CLIENT','COORDONNEES','BANCAIRES','REGLEMENT','SOUS','TAUX','AVIS','GOOGLE'];
+      const nameCandidates = capsNames.filter(n => !excluded.some(e => n.includes(e)) && n.length > 5);
+      if (nameCandidates.length > 0) {
+        const fullName = nameCandidates[0].trim();
+        result.fullName = fullName;
+        const parts = fullName.split(/\s+/).filter(p => p.length > 1);
+        result.prenom = parts[parts.length - 1] || parts[0];
+      }
+    }
+  }
+
+  // Extract total
   const allTotals = [...text.matchAll(/TOTAL\s+(\d+[.,]\d{2})\s*€?/gi)];
   if (allTotals.length > 0) {
-    // Take the last TOTAL (the grand total)
     const last = allTotals[allTotals.length - 1];
     result.prix = parseFloat(last[1].replace(',', '.'));
   }
@@ -2531,8 +2544,14 @@ async function applyFacture() {
     });
     showToast('✅ Commande mise à jour !');
     document.getElementById('facture-result').classList.remove('visible');
+    const id = factureSelectedId;
     factureSelectedId = null;
     factureExtracted = {};
+
+    // Navigate to commandes liste and open the matching commande
+    goToCommandes();
+    switchTab('liste');
+    setTimeout(() => openModal(id), 300);
   } catch(e) {
     showToast('❌ Erreur sauvegarde');
   }
@@ -2554,7 +2573,7 @@ async function saveStoredFacture(facture) {
     await sbFetch('factures', { method: 'POST', prefer: 'return=minimal', body: JSON.stringify(facture) });
     facturesList.unshift(facture);
   } catch(e) {
-    showToast('\u274C Erreur sauvegarde facture');
+    showToast('❌ Erreur sauvegarde facture');
   }
 }
 
@@ -2563,9 +2582,9 @@ async function deleteStoredFacture(id) {
     await sbFetch('factures?id=eq.' + id, { method: 'DELETE' });
     facturesList = facturesList.filter(f => f.id !== id);
     renderFactureList();
-    showToast('\U0001F5D1 Facture supprim\u00e9e');
+    showToast('🗑 Facture supprimée');
   } catch(e) {
-    showToast('\u274C Erreur suppression');
+    showToast('❌ Erreur suppression');
   }
 }
 
@@ -2575,16 +2594,16 @@ async function clearAllFactures() {
     await sbFetch('factures?id=gt.0', { method: 'DELETE' });
     facturesList = [];
     renderFactureList();
-    showToast('\U0001F5D1 Factures effac\u00e9es');
+    showToast('🗑 Factures effacées');
   } catch(e) {
-    showToast('\u274C Erreur suppression');
+    showToast('❌ Erreur suppression');
   }
 }
 
 function renderFactureList() {
   const el = document.getElementById('facture-stored-list');
   if (facturesList.length === 0) {
-    el.innerHTML = `<div class="empty-state"><div class="icon">\U0001F4C4</div><p>Aucune facture enregistr\u00e9e</p></div>`;
+    el.innerHTML = `<div class="empty-state"><div class="icon">📄</div><p>Aucune facture enregistr\u00e9e</p></div>`;
     return;
   }
   el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
