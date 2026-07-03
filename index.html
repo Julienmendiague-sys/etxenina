@@ -1456,6 +1456,7 @@
   input[type="file"] { display: none; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src='https://unpkg.com/tesseract.js@4/dist/tesseract.min.js'></script>
 <script>
   if (window.pdfjsLib) {
     window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -1753,7 +1754,7 @@
 
     <div class="facture-analyzing" id="facture-analyzing">
       <div class="facture-spinner"></div>
-      <div class="facture-analyzing-text">Analyse de la facture en cours…</div>
+      <div class="facture-analyzing-text" id="facture-analyzing-text">Analyse de la facture en cours…</div>
     </div>
 
     <div class="facture-result" id="facture-result">
@@ -2415,11 +2416,20 @@ async function analyzeFacture(input) {
     const fileDataURL = await fileToDataURL(file);
 
     if (file.type === 'application/pdf') {
+      // Extract text from PDF with PDF.js
       const text = await extractTextFromPDF(file);
       factureExtracted = parseFactureText(text);
     } else {
-      factureExtracted = { prenom: null, numero_facture: null, prix: null };
-      showToast('💡 Photo importée — remplis les infos manuellement');
+      // Extract text from image with Tesseract.js OCR
+      document.getElementById('facture-analyzing-text').textContent = 'Reconnaissance du texte…';
+      try {
+        const worker = await Tesseract.createWorker('fra');
+        const { data: { text } } = await worker.recognize(fileDataURL);
+        await worker.terminate();
+        factureExtracted = parseFactureText(text);
+      } catch(e) {
+        factureExtracted = { prenom: null, numero_facture: null, prix: null };
+      }
     }
 
     // Store the file
@@ -2438,6 +2448,7 @@ async function analyzeFacture(input) {
     showToast('❌ Erreur: ' + e.message.substring(0, 50));
   } finally {
     document.getElementById('facture-analyzing').classList.remove('visible');
+    document.getElementById('facture-analyzing-text').textContent = 'Analyse de la facture en cours…';
   }
 }
 
