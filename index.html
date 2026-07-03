@@ -2375,33 +2375,33 @@ function parseFactureText(text) {
     || text.match(/(\d{3,6})\s+\d{2}\/\d{2}\/\d{4}/);
   if (numMatch) result.numero_facture = numMatch[1];
 
-  // Extract client name — try multiple patterns
-  // Pattern 1: after FACTURER À
-  let facturerIdx = text.search(/FACTURER?\s*[AÀ]/i);
-  if (facturerIdx >= 0) {
-    const after = text.substring(facturerIdx, facturerIdx + 150);
-    // Skip past "FACTURER À" keyword (10-15 chars) then find caps name
-    const nameMatch = after.match(/FACTURER?\s*[AÀ]\s+([A-Z][A-Z\-]+(?:\s+[A-Z][A-Z\-]+){0,4})/i);
-    if (nameMatch) {
-      const fullName = nameMatch[1].trim();
-      result.fullName = fullName;
-      const parts = fullName.split(/\s+/).filter(p => p.length > 1);
-      result.prenom = parts[parts.length - 1] || parts[0];
+  // Extract client name — look for "FACTURER À [NOM PRÉNOM PRÉNOM2]"
+  // The pattern in invoices is: "FACTURER À\n\nNOM PRÉNOM PRÉNOM2"
+  // We need to find it and take the LAST word as the first name to match
+  const facturerMatch = text.match(/FACTURER?\s*[AÀ][\s\S]{0,30}?([A-Z]{3,}(?:\s+[A-Z]{3,}){1,3})/i);
+  if (facturerMatch) {
+    // Clean up the matched name
+    const rawName = facturerMatch[1].trim();
+    // Exclude if it's a non-name word
+    const excluded = ['FACTURER','FACTURE','TOTAL','SIRET','SWIFT','IBAN','TAUX','POUR','TOUTE','QUESTION','CONCERNANT','SCANNEZ','AVIS','GOOGLE','ZURE','IRITZIAK','BALIO'];
+    const parts = rawName.split(/\s+/).filter(p => p.length >= 3 && !excluded.includes(p.toUpperCase()));
+    if (parts.length > 0) {
+      result.fullName = parts.join(' ');
+      // Last word = first name (e.g. MENDIAGUE JULIEN MARTIAL -> MARTIAL)
+      result.prenom = parts[parts.length - 1];
     }
   }
 
-  // Pattern 2: look for "MENDIAGUE" style all-caps names if pattern 1 failed
+  // Fallback: search for all-caps name blocks anywhere in text, excluding known non-names
   if (!result.fullName) {
-    const capsNames = text.match(/([A-Z]{2,}(?:\s+[A-Z]{2,}){1,3})/g);
-    if (capsNames) {
-      // Filter out common header words
-      const excluded = ['FACTURE','TOTAL','SIRET','SWIFT','IBAN','TVA','DATE','ARTICLE','UNITE','QTE','MONTANT','CONDITIONS','CLIENT','COORDONNEES','BANCAIRES','REGLEMENT','SOUS','TAUX','AVIS','GOOGLE'];
-      const nameCandidates = capsNames.filter(n => !excluded.some(e => n.includes(e)) && n.length > 5);
-      if (nameCandidates.length > 0) {
-        const fullName = nameCandidates[0].trim();
-        result.fullName = fullName;
-        const parts = fullName.split(/\s+/).filter(p => p.length > 1);
-        result.prenom = parts[parts.length - 1] || parts[0];
+    const excluded = ['FACTURE','FACTURER','TOTAL','SIRET','SWIFT','IBAN','TVA','DATE','ARTICLE','UNITE','QTE','MONTANT','CONDITIONS','CLIENT','COORDONNEES','BANCAIRES','REGLEMENT','SOUS','TAUX','POUR','TOUTE','QUESTION','SCANNEZ','AVIS','GOOGLE','ZURE','IRITZIAK','BALIO','SAS','BOSTAK'];
+    const allCaps = [...text.matchAll(/([A-Z]{3,}(?:\s[A-Z]{3,}){1,3})/g)];
+    for (const m of allCaps) {
+      const parts = m[1].split(/\s+/).filter(p => !excluded.includes(p));
+      if (parts.length >= 2) {
+        result.fullName = parts.join(' ');
+        result.prenom = parts[parts.length - 1];
+        break;
       }
     }
   }
@@ -2603,7 +2603,7 @@ async function clearAllFactures() {
 function renderFactureList() {
   const el = document.getElementById('facture-stored-list');
   if (facturesList.length === 0) {
-    el.innerHTML = `<div class="empty-state"><div class="icon">📄</div><p>Aucune facture enregistr\u00e9e</p></div>`;
+    el.innerHTML = `<div class="empty-state"><div class="icon">📄</div><p>Aucune facture enregistrée</p></div>`;
     return;
   }
   el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
@@ -2616,7 +2616,7 @@ function renderFactureList() {
       const preview = isImage
         ? `<img src="${f.data}" style="width:100%;border-radius:10px;margin-top:10px;display:block;" />`
         : `<div style="display:flex;align-items:center;gap:8px;margin-top:10px;background:var(--beige);border-radius:8px;padding:8px 12px;">
-             <span style="font-size:1.2rem;">\U0001F4CE</span>
+             <span style="font-size:1.2rem;">📎</span>
              <span style="font-size:0.8rem;color:var(--brun);font-weight:600;">${f.name || 'facture.pdf'}</span>
            </div>`;
       return `<div class="facture-card" style="flex-direction:column;align-items:stretch;">
@@ -2625,7 +2625,7 @@ function renderFactureList() {
             <div class="facture-card-name">${f.client_name || 'Facture'}</div>
             <div class="facture-card-date">${dateStr}</div>
           </div>
-          <button onclick="deleteStoredFacture(${f.id})" style="background:none;border:none;color:var(--gris);font-size:1.1rem;cursor:pointer;">\U0001F5D1</button>
+          <button onclick="deleteStoredFacture(${f.id})" style="background:none;border:none;color:var(--gris);font-size:1.1rem;cursor:pointer;">🗑</button>
         </div>
         ${preview}
       </div>`;
