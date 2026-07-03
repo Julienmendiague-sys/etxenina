@@ -2460,9 +2460,16 @@ async function analyzeFacture(input) {
       }
     } else {
       // Extract text from image with Tesseract.js OCR
-      document.getElementById('facture-analyzing-text').textContent = 'Reconnaissance du texte…';
+      document.getElementById('facture-analyzing-text').textContent = 'Analyse de la photo en cours…';
       try {
-        const worker = await Tesseract.createWorker('fra');
+        const worker = await Tesseract.createWorker(['fra', 'eng'], 1, {
+          logger: m => {
+            if (m.status === 'recognizing text') {
+              const pct = Math.round(m.progress * 100);
+              document.getElementById('facture-analyzing-text').textContent = `Reconnaissance du texte… ${pct}%`;
+            }
+          }
+        });
         const { data: { text } } = await worker.recognize(fileDataURL);
         await worker.terminate();
         factureExtracted = parseFactureText(text);
