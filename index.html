@@ -2549,6 +2549,7 @@ function showFactureResult() {
   const nameParts = fullName.toLowerCase().split(/\s+/).filter(p => p.length > 2);
   const matches = commandes.filter(c =>
     nameParts.length > 0 && nameParts.some(part => c.prenom.toLowerCase().includes(part))
+    && (!c.prix || c.prix === 0)
   );
 
   const matchesEl = document.getElementById('facture-matches');
